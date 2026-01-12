@@ -1,0 +1,612 @@
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+local Players, RunService, Camera, LocalPlayer, Mouse, UIS =
+    game:GetService("Players"), game:GetService("RunService"),
+    workspace.CurrentCamera, game.Players.LocalPlayer, game.Players.LocalPlayer:GetMouse(),
+    game:GetService("UserInputService")
+
+local Window = WindUI:CreateWindow({
+    Title = "Swift Hub 👨‍💻",
+    Icon = "rbxassetid://126601065035910",
+    Author = "",
+    Folder = "GotHubFolder",
+    Size = UDim2.fromOffset(400, 200),
+    Theme = "Dark",
+    Transparent = true,
+    Resizable = true,
+})
+
+local Tab = Window:Tab({Title = "Auto Farm", Icon = "house"})
+
+-- =========================
+-- GLOBAL TOGGLE
+-- =========================
+getgenv().AUTO_ALL = false
+getgenv().StopTween = false
+
+-- =========================
+-- SERVICES
+-- =========================
+local Players = cloneref(game:GetService("Players"))
+local Rep = cloneref(game:GetService("ReplicatedStorage"))
+local Workspace = cloneref(game:GetService("Workspace"))
+local RunService = game:GetService("RunService")
+
+local Client = Players.LocalPlayer
+local Character = Client.Character or Client.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local RootPart = Character:WaitForChild("HumanoidRootPart")
+
+Client.CharacterAdded:Connect(function(char)
+    Character = char
+    Humanoid = char:WaitForChild("Humanoid")
+    RootPart = char:WaitForChild("HumanoidRootPart")
+end)
+
+-- =========================
+-- MODULES
+-- =========================
+local QuestData = require(Rep:WaitForChild("Quests"))
+local GuideModule = require(Rep:WaitForChild("GuideModule"))
+local Enemies = Workspace:WaitForChild("Enemies")
+
+-- =========================
+-- TOGGLE UI
+-- =========================
+Tab:Toggle({
+    Title = "AUTO FARM (ALL-IN-ONE)",
+    Desc = "Quest + TP + Attack + Bring Mob",
+    Value = false,
+    Callback = function(v)
+        getgenv().AUTO_ALL = v
+        getgenv().StopTween = not v
+        print("AUTO FARM:", v)
+    end
+})
+
+-- =========================
+-- TELEPORT (SMOOTH)
+-- =========================
+local function Teleport(cf)
+    local start = Character:GetPivot()
+    local dir = (cf.Position - start.Position)
+    local dist = dir.Magnitude
+    if dist <= 1 then Character:PivotTo(cf) return end
+
+    dir = dir.Unit
+    local speed = 250
+    local t0 = tick()
+
+    while dist > 0 and not getgenv().StopTween do
+        local moved = math.min((tick() - t0) * speed, dist)
+        Character:PivotTo(CFrame.new(start.Position + dir * moved) * (cf - cf.Position))
+        task.wait()
+    end
+
+    Character:PivotTo(cf)
+end
+
+-- =========================
+-- REMOTE
+-- =========================
+local function Action(args)
+    return Rep.Remotes.CommF_:InvokeServer(table.unpack(args))
+end
+
+-- =========================
+-- QUEST LOGIC
+-- =========================
+local function GetQuest()
+    local best, level = nil, -1
+    for _,v in pairs(QuestData) do
+        for k,q in pairs(v) do
+            if q.LevelReq and Client.Data.Level.Value >= q.LevelReq and q.LevelReq > level then
+                best = q
+                best._sub = _
+                best._key = k
+                level = q.LevelReq
+            end
+        end
+    end
+
+    if not best then return end
+    local mobName = next(best.Task)
+    local npc = GuideModule.GetNearestNPC(GuideModule, RootPart.Position, Client.Data.Level.Value)
+
+    return best, mobName, npc and npc[1]
+end
+
+-- =========================
+-- AUTO QUEST + TP
+-- =========================
+task.spawn(function()
+    while task.wait() do
+        if not getgenv().AUTO_ALL then continue end
+        pcall(function()
+            local quest, mobName, npcPos = GetQuest()
+            if not quest then return end
+
+            if Client.PlayerGui.Main.Quest.Visible then
+                for _,mob in pairs(Enemies:GetChildren()) do
+                    if mob.Name == mobName and mob:FindFirstChild("HumanoidRootPart")
+                    and mob.Humanoid.Health > 0 then
+                        Teleport(mob.HumanoidRootPart.CFrame * CFrame.new(0,40,0))
+                        break
+                    end
+                end
+            else
+                if npcPos then
+                    local cf = CFrame.new(npcPos)
+                    if (cf.Position - RootPart.Position).Magnitude < 5 then
+                        Action({"StartQuest", quest._sub, quest._key})
+                    else
+                        Teleport(cf)
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- =========================
+-- AUTO ATTACK
+-- =========================
+task.spawn(function()
+    while task.wait(0.15) do
+        if not getgenv().AUTO_ALL then continue end
+
+        local nearest, dist = nil, math.huge
+        for _,mob in pairs(Enemies:GetChildren()) do
+            if mob:FindFirstChild("HumanoidRootPart")
+            and mob:FindFirstChild("Humanoid")
+            and mob.Humanoid.Health > 0 then
+                local d = (mob.HumanoidRootPart.Position - RootPart.Position).Magnitude
+                if d < dist then
+                    dist = d
+                    nearest = mob
+                end
+            end
+        end
+
+        if nearest then
+            Rep.Modules.Net["RE/RegisterAttack"]:FireServer(0.1)
+            Rep.Modules.Net["RE/RegisterHit"]:FireServer(
+                nearest.HumanoidRootPart, {}, "002a98fe"
+            )
+        end
+    end
+end)
+
+-- =========================
+-- BRING MOB (SMOOTH FLOAT)
+-- =========================
+local Follow = {}
+local FLOAT_Y = -20
+local RANGE = 250
+
+local function SetupMob(mob)
+    local hrp = mob.HumanoidRootPart
+    if hrp:FindFirstChild("BringAlign") then return end
+
+    local att = Instance.new("Attachment", hrp)
+    local align = Instance.new("AlignPosition", hrp)
+    align.Attachment0 = att
+    align.MaxForce = math.huge
+    align.Responsiveness = 40
+    align.ApplyAtCenterOfMass = true
+    align.Name = "BringAlign"
+
+    table.insert(Follow, mob)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not getgenv().AUTO_ALL then return end
+
+    for _,mob in pairs(Enemies:GetChildren()) do
+        if mob:FindFirstChild("HumanoidRootPart")
+        and mob:FindFirstChild("Humanoid")
+        and mob.Humanoid.Health > 0 then
+            if (mob.HumanoidRootPart.Position - RootPart.Position).Magnitude <= RANGE then
+                SetupMob(mob)
+            end
+        end
+    end
+
+    for i=#Follow,1,-1 do
+        local mob = Follow[i]
+        if mob and mob.Parent and mob:FindFirstChild("HumanoidRootPart") then
+            mob.HumanoidRootPart.BringAlign.Position =
+                RootPart.Position + Vector3.new(0, FLOAT_Y, 0)
+        else
+            table.remove(Follow, i)
+        end
+    end
+end)
+
+
+local Tab = Window:Tab({Title = "Combat", Icon = "crosshair"})
+
+-- =========================
+-- GLOBAL
+-- =========================
+getgenv().AimbotEnabled = false
+getgenv().FOV = 70
+getgenv().TargetPosition = nil
+
+-- =========================
+-- SERVICES
+-- =========================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- =========================
+-- FOV CIRCLE
+-- =========================
+local fovCircle = Drawing.new("Circle")
+fovCircle.Color = Color3.new(1,1,1)
+fovCircle.Thickness = 2
+fovCircle.NumSides = 100
+fovCircle.Filled = false
+fovCircle.Transparency = 1
+fovCircle.Visible = false
+
+-- =========================
+-- TRACER
+-- =========================
+local tracer = Drawing.new("Line")
+tracer.Color = Color3.fromRGB(255,0,0)
+tracer.Thickness = 2
+tracer.Transparency = 1
+tracer.Visible = false
+
+-- =========================
+-- GET CLOSEST TARGET
+-- =========================
+local function getClosest()
+    local closest = nil
+    local shortest = getgenv().FOV
+    local center = Camera.ViewportSize / 2
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer
+        and p.Character
+        and p.Character:FindFirstChild("HumanoidRootPart")
+        and p.Character:FindFirstChild("Humanoid")
+        and p.Character.Humanoid.Health > 0 then
+
+            local hrp = p.Character.HumanoidRootPart
+            local pos, on = Camera:WorldToViewportPoint(hrp.Position)
+
+            if on then
+                local d = (Vector2.new(pos.X,pos.Y) - center).Magnitude
+                if d < shortest then
+                    shortest = d
+                    closest = hrp
+                end
+            end
+        end
+    end
+
+    return closest
+end
+
+-- =========================
+-- RENDER LOOP
+-- =========================
+RunService.RenderStepped:Connect(function()
+    local size = Camera.ViewportSize
+    local center = Vector2.new(size.X/2, size.Y/2)
+
+    fovCircle.Position = center
+    fovCircle.Radius = getgenv().FOV
+    fovCircle.Visible = getgenv().AimbotEnabled
+
+    if not getgenv().AimbotEnabled then
+        tracer.Visible = false
+        getgenv().TargetPosition = nil
+        return
+    end
+
+    local hrp = getClosest()
+    if hrp then
+        local pos, on = Camera:WorldToViewportPoint(hrp.Position)
+        if on then
+            tracer.From = center
+            tracer.To = Vector2.new(pos.X,pos.Y)
+            tracer.Visible = true
+            getgenv().TargetPosition = hrp.CFrame
+            return
+        end
+    end
+
+    tracer.Visible = false
+    getgenv().TargetPosition = nil
+end)
+
+-- =========================
+-- NAMECALL HOOK
+-- =========================
+local mt = getrawmetatable(game)
+local old = mt.__namecall
+setreadonly(mt, false)
+
+mt.__namecall = newcclosure(function(...)
+    local method = getnamecallmethod()
+    local args = {...}
+
+    if not getgenv().AimbotEnabled or not getgenv().TargetPosition then
+        return old(unpack(args))
+    end
+
+    if method == "FireServer" then
+        if typeof(args[2]) == "CFrame" then
+            args[2] = getgenv().TargetPosition
+        elseif typeof(args[2]) == "Vector3" then
+            args[2] = getgenv().TargetPosition.Position
+        end
+        return old(unpack(args))
+    end
+
+    if method == "InvokeServer" then
+        if typeof(args[3]) == "CFrame" then
+            args[3] = getgenv().TargetPosition
+        elseif typeof(args[3]) == "Vector3" then
+            args[3] = getgenv().TargetPosition.Position
+        end
+        return old(unpack(args))
+    end
+
+    return old(unpack(args))
+end)
+
+setreadonly(mt, true)
+
+-- =========================
+-- UI : TOGGLE
+-- =========================
+Tab:Toggle({
+    Title = "Silent aim",
+    Desc = "",
+    Value = false,
+    Callback = function(v)
+        getgenv().AimbotEnabled = v
+    end
+})
+
+-- =========================
+-- UI : SLIDER (FOV)
+-- =========================
+Tab:Slider({
+    Title = "FOV",
+    Desc = "",
+    Step = 1,
+    Value = {
+        Min = 20,
+        Max = 500,
+        Default = 70,
+    },
+    Callback = function(value)
+        getgenv().FOV = value
+    end
+})
+
+local Tab = Window:Tab({Title = "Player", Icon = "user"})
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Character = nil
+
+-- อัปเดตตัวละครเสมอ (ตอนตาย / เกิดใหม่)
+local function UpdateCharacter()
+    Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+end
+UpdateCharacter()
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.2)
+    UpdateCharacter()
+end)
+
+-- =====================
+-- Dash Length (ใช้ได้ตลอด)
+-- =====================
+Tab:Slider({
+    Title = "Dash Length",
+    Desc = "",
+    Step = 5,
+    Value = {
+        Min = 16,
+        Max = 1000,
+        Default = 16
+    },
+    Callback = function(value)
+        if Character then
+            Character:SetAttribute("DashLength", value)
+        end
+    end
+})
+
+-- =====================
+-- Walking On Water (Toggle)
+-- =====================
+Tab:Toggle({
+    Title = "Walking On Water",
+    Desc = "",
+    Value = false,
+    Callback = function(v)
+        if Character then
+            Character:SetAttribute("WaterWalking", v)
+        end
+    end
+})
+
+-- ⚡ Toggle: Jump Boost + Infinite Jump
+Tab:Toggle({
+    Title = "Jump Boost",
+    Desc = "",
+    Value = false,
+    Callback = function(state)
+        getgenv().JumpBoostEnabled = state
+        print("Jump Boost:", state)
+
+        local Players = game:GetService("Players")
+        local UserInputService = game:GetService("UserInputService")
+        local LocalPlayer = Players.LocalPlayer
+
+        -- ลบของเก่า
+        if getgenv().JumpBoostConnection then
+            getgenv().JumpBoostConnection:Disconnect()
+            getgenv().JumpBoostConnection = nil
+        end
+
+        if getgenv().JumpBoost_CharAdded then
+            getgenv().JumpBoost_CharAdded:Disconnect()
+            getgenv().JumpBoost_CharAdded = nil
+        end
+
+        -- ฟังก์ชันตั้งค่า Jump + Infinite Jump
+        local function SetupJump(Character)
+            if not getgenv().JumpBoostEnabled then return end
+            local Humanoid = Character:WaitForChild("Humanoid")
+
+            -- ตั้งค่าความสูงกระโดด
+            Humanoid.JumpPower = 1000     -- ← ปรับได้
+            Humanoid.JumpHeight = 1000     -- ← ปรับได้
+
+            -- ทำ Infinite Jump
+            getgenv().JumpBoostConnection = UserInputService.InputBegan:Connect(function(input, g)
+                if g then return end
+                if input.KeyCode ~= Enum.KeyCode.Space then return end
+
+                if getgenv().JumpBoostEnabled then
+                    Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end)
+        end
+
+        -- ถ้าเปิดฟีเจอร์ → ทำงานทันที
+        if state then
+            local Char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            SetupJump(Char)
+
+            -- คืนค่าใหม่เวลาเกิดใหม่
+            getgenv().JumpBoost_CharAdded = LocalPlayer.CharacterAdded:Connect(function(newChar)
+                task.wait(0.5)
+                if getgenv().JumpBoostEnabled then
+                    SetupJump(newChar)
+                end
+            end)
+        end
+    end
+})
+
+local InvisibleRunning = false
+
+-- พิกัดที่ต้องการวาป
+local INVIS_CFRAME = CFrame.new(-1232.159423828125, 13.274794578552246, 4113.931640625)
+
+Tab:Button({
+    Title = "Invisible",
+    Description = "TP + FFlag trick + Reset",
+    Callback = function()
+        if InvisibleRunning then return end
+        InvisibleRunning = true
+
+        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local hrp = char:WaitForChild("HumanoidRootPart")
+        local hum = char:WaitForChild("Humanoid")
+
+        -- จำตำแหน่งเดิม
+        local oldCFrame = hrp.CFrame
+
+        -- วาปไปตำแหน่งที่กำหนด
+        hrp.CFrame = INVIS_CFRAME
+        task.wait(0.2)
+
+        -- ปิด FFlag
+        setfflag("NextGenReplicatorEnabledWrite4", "false")
+        print("NextGenReplicatorEnabledWrite4 false")
+
+        task.wait(2)
+
+        -- เปิด FFlag กลับ
+        setfflag("NextGenReplicatorEnabledWrite4", "true")
+        print("NextGenReplicatorEnabledWrite4 true")
+
+        task.wait(0.2)
+
+        -- วาปกลับตำแหน่งเดิม
+        hrp.CFrame = oldCFrame
+        task.wait(0.1)
+
+        -- รีเซ็ตตัวละคร
+        hum.Health = 0
+
+        InvisibleRunning = false
+    end
+})
+
+local Tab = Window:Tab({Title = "Auto up Stats", Icon = "key"})
+
+-- =========================
+-- AUTO STATS CONFIG
+-- =========================
+local statsToAdd = {
+    "Melee",
+    "Defense",
+    "Sword",
+    "Gun",
+    "Demon Fruit"
+}
+
+local auto_stats = false
+
+-- =========================
+-- AUTO STATS TOGGLE
+-- =========================
+Tab:Toggle({
+    Title = "Auto Stats",
+    Desc = "",
+    Value = false,
+    Callback = function(Value)
+        auto_stats = Value
+
+        if auto_stats then
+            task.spawn(function()
+                while auto_stats do
+                    task.wait(0.1)
+                    for _, stat in ipairs(statsToAdd) do
+                        pcall(function()
+                            game:GetService("ReplicatedStorage")
+                                .Remotes
+                                .CommF_
+                                :InvokeServer("AddPoint", stat, 1)
+                        end)
+                    end
+                end
+            end)
+        end
+    end
+})
+
+-- =========================
+-- STAT SELECTION DROPDOWN
+-- =========================
+Tab:Dropdown({
+    Title = "Select Stat",
+    Desc = "",
+    Values = {
+        "Melee",
+        "Defense",
+        "Sword",
+        "Gun",
+        "Demon Fruit"
+    },
+    Multi = true, -- เลือกได้หลายค่า
+    Default = {"Melee"},
+    Callback = function(Value)
+        statsToAdd = Value
+    end
+})
+
