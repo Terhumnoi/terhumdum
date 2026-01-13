@@ -5,27 +5,22 @@ local Players, RunService, Camera, LocalPlayer, Mouse, UIS =
     game:GetService("UserInputService")
 
 local Window = WindUI:CreateWindow({
-    Title = "Swift Hub 👨‍💻",
+    Title = "Senixa Hub BloxFruit [Premium]​",
     Icon = "rbxassetid://126601065035910",
     Author = "",
     Folder = "GotHubFolder",
-    Size = UDim2.fromOffset(400, 200),
+    Size = UDim2.fromOffset(700, 460),
     Theme = "Dark",
     Transparent = true,
     Resizable = true,
 })
 
-local Tab = Window:Tab({Title = "Auto Farm", Icon = "house"})
-
--- =========================
--- GLOBAL TOGGLE
--- =========================
+local MainTab = Window:Tab({
+    Title = "MainFarm",
+    Icon = "tractor"
+})
 getgenv().AUTO_ALL = false
 getgenv().StopTween = false
-
--- =========================
--- SERVICES
--- =========================
 local Players = cloneref(game:GetService("Players"))
 local Rep = cloneref(game:GetService("ReplicatedStorage"))
 local Workspace = cloneref(game:GetService("Workspace"))
@@ -42,19 +37,13 @@ Client.CharacterAdded:Connect(function(char)
     RootPart = char:WaitForChild("HumanoidRootPart")
 end)
 
--- =========================
--- MODULES
--- =========================
 local QuestData = require(Rep:WaitForChild("Quests"))
 local GuideModule = require(Rep:WaitForChild("GuideModule"))
 local Enemies = Workspace:WaitForChild("Enemies")
 
--- =========================
--- TOGGLE UI
--- =========================
+
 Tab:Toggle({
-    Title = "AUTO FARM (ALL-IN-ONE)",
-    Desc = "Quest + TP + Attack + Bring Mob",
+    Title = "AUTO FARM",
     Value = false,
     Callback = function(v)
         getgenv().AUTO_ALL = v
@@ -63,9 +52,6 @@ Tab:Toggle({
     end
 })
 
--- =========================
--- TELEPORT (SMOOTH)
--- =========================
 local function Teleport(cf)
     local start = Character:GetPivot()
     local dir = (cf.Position - start.Position)
@@ -73,7 +59,7 @@ local function Teleport(cf)
     if dist <= 1 then Character:PivotTo(cf) return end
 
     dir = dir.Unit
-    local speed = 250
+    local speed = 185
     local t0 = tick()
 
     while dist > 0 and not getgenv().StopTween do
@@ -85,16 +71,10 @@ local function Teleport(cf)
     Character:PivotTo(cf)
 end
 
--- =========================
--- REMOTE
--- =========================
 local function Action(args)
     return Rep.Remotes.CommF_:InvokeServer(table.unpack(args))
 end
 
--- =========================
--- QUEST LOGIC
--- =========================
 local function GetQuest()
     local best, level = nil, -1
     for _,v in pairs(QuestData) do
@@ -115,9 +95,6 @@ local function GetQuest()
     return best, mobName, npc and npc[1]
 end
 
--- =========================
--- AUTO QUEST + TP
--- =========================
 task.spawn(function()
     while task.wait() do
         if not getgenv().AUTO_ALL then continue end
@@ -147,9 +124,6 @@ task.spawn(function()
     end
 end)
 
--- =========================
--- AUTO ATTACK
--- =========================
 task.spawn(function()
     while task.wait(0.15) do
         if not getgenv().AUTO_ALL then continue end
@@ -176,12 +150,9 @@ task.spawn(function()
     end
 end)
 
--- =========================
--- BRING MOB (SMOOTH FLOAT)
--- =========================
 local Follow = {}
 local FLOAT_Y = -20
-local RANGE = 250
+local RANGE = 180
 
 local function SetupMob(mob)
     local hrp = mob.HumanoidRootPart
@@ -223,26 +194,19 @@ RunService.Heartbeat:Connect(function()
 end)
 
 
-local Tab = Window:Tab({Title = "Combat", Icon = "crosshair"})
-
--- =========================
--- GLOBAL
--- =========================
+local CombatTab = Window:Tab({
+    Title = "PvP",
+    Icon = "sword"
+})
 getgenv().AimbotEnabled = false
 getgenv().FOV = 70
 getgenv().TargetPosition = nil
 
--- =========================
--- SERVICES
--- =========================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
--- =========================
--- FOV CIRCLE
--- =========================
 local fovCircle = Drawing.new("Circle")
 fovCircle.Color = Color3.new(1,1,1)
 fovCircle.Thickness = 2
@@ -251,18 +215,12 @@ fovCircle.Filled = false
 fovCircle.Transparency = 1
 fovCircle.Visible = false
 
--- =========================
--- TRACER
--- =========================
 local tracer = Drawing.new("Line")
 tracer.Color = Color3.fromRGB(255,0,0)
 tracer.Thickness = 2
 tracer.Transparency = 1
 tracer.Visible = false
 
--- =========================
--- GET CLOSEST TARGET
--- =========================
 local function getClosest()
     local closest = nil
     local shortest = getgenv().FOV
@@ -291,9 +249,6 @@ local function getClosest()
     return closest
 end
 
--- =========================
--- RENDER LOOP
--- =========================
 RunService.RenderStepped:Connect(function()
     local size = Camera.ViewportSize
     local center = Vector2.new(size.X/2, size.Y/2)
@@ -324,9 +279,6 @@ RunService.RenderStepped:Connect(function()
     getgenv().TargetPosition = nil
 end)
 
--- =========================
--- NAMECALL HOOK
--- =========================
 local mt = getrawmetatable(game)
 local old = mt.__namecall
 setreadonly(mt, false)
@@ -362,24 +314,16 @@ end)
 
 setreadonly(mt, true)
 
--- =========================
--- UI : TOGGLE
--- =========================
-Tab:Toggle({
-    Title = "Silent aim",
-    Desc = "",
+TabCombat:Toggle({
+    Title = "Aimbot",
     Value = false,
     Callback = function(v)
         getgenv().AimbotEnabled = v
     end
 })
 
--- =========================
--- UI : SLIDER (FOV)
--- =========================
-Tab:Slider({
+TabCombat:Slider({
     Title = "FOV",
-    Desc = "",
     Step = 1,
     Value = {
         Min = 20,
@@ -391,13 +335,14 @@ Tab:Slider({
     end
 })
 
-local Tab = Window:Tab({Title = "Player", Icon = "user"})
-
+local PlayerTab = Window:Tab({
+    Title = "Playrr",
+    Icon = "user"
+})
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Character = nil
 
--- อัปเดตตัวละครเสมอ (ตอนตาย / เกิดใหม่)
 local function UpdateCharacter()
     Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 end
@@ -408,12 +353,8 @@ LocalPlayer.CharacterAdded:Connect(function()
     UpdateCharacter()
 end)
 
--- =====================
--- Dash Length (ใช้ได้ตลอด)
--- =====================
-Tab:Slider({
+TabPlayer:Slider({
     Title = "Dash Length",
-    Desc = "",
     Step = 5,
     Value = {
         Min = 16,
@@ -427,12 +368,8 @@ Tab:Slider({
     end
 })
 
--- =====================
--- Walking On Water (Toggle)
--- =====================
-Tab:Toggle({
+TabPlayer:Toggle({
     Title = "Walking On Water",
-    Desc = "",
     Value = false,
     Callback = function(v)
         if Character then
@@ -441,8 +378,7 @@ Tab:Toggle({
     end
 })
 
--- ⚡ Toggle: Jump Boost + Infinite Jump
-Tab:Toggle({
+TabPlayer:Toggle({
     Title = "Jump Boost",
     Desc = "",
     Value = false,
@@ -454,7 +390,7 @@ Tab:Toggle({
         local UserInputService = game:GetService("UserInputService")
         local LocalPlayer = Players.LocalPlayer
 
-        -- ลบของเก่า
+       
         if getgenv().JumpBoostConnection then
             getgenv().JumpBoostConnection:Disconnect()
             getgenv().JumpBoostConnection = nil
@@ -465,16 +401,16 @@ Tab:Toggle({
             getgenv().JumpBoost_CharAdded = nil
         end
 
-        -- ฟังก์ชันตั้งค่า Jump + Infinite Jump
+       
         local function SetupJump(Character)
             if not getgenv().JumpBoostEnabled then return end
             local Humanoid = Character:WaitForChild("Humanoid")
 
-            -- ตั้งค่าความสูงกระโดด
-            Humanoid.JumpPower = 1000     -- ← ปรับได้
-            Humanoid.JumpHeight = 1000     -- ← ปรับได้
+            
+            Humanoid.JumpPower = 1000     
+            Humanoid.JumpHeight = 1000     
 
-            -- ทำ Infinite Jump
+            
             getgenv().JumpBoostConnection = UserInputService.InputBegan:Connect(function(input, g)
                 if g then return end
                 if input.KeyCode ~= Enum.KeyCode.Space then return end
@@ -485,12 +421,12 @@ Tab:Toggle({
             end)
         end
 
-        -- ถ้าเปิดฟีเจอร์ → ทำงานทันที
+        
         if state then
             local Char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             SetupJump(Char)
 
-            -- คืนค่าใหม่เวลาเกิดใหม่
+            
             getgenv().JumpBoost_CharAdded = LocalPlayer.CharacterAdded:Connect(function(newChar)
                 task.wait(0.5)
                 if getgenv().JumpBoostEnabled then
@@ -503,10 +439,10 @@ Tab:Toggle({
 
 local InvisibleRunning = false
 
--- พิกัดที่ต้องการวาป
+
 local INVIS_CFRAME = CFrame.new(-1232.159423828125, 13.274794578552246, 4113.931640625)
 
-Tab:Button({
+TabPlayer:Button({
     Title = "Invisible",
     Description = "TP + FFlag trick + Reset",
     Callback = function()
@@ -517,41 +453,42 @@ Tab:Button({
         local hrp = char:WaitForChild("HumanoidRootPart")
         local hum = char:WaitForChild("Humanoid")
 
-        -- จำตำแหน่งเดิม
+       
         local oldCFrame = hrp.CFrame
 
-        -- วาปไปตำแหน่งที่กำหนด
+        
         hrp.CFrame = INVIS_CFRAME
         task.wait(0.2)
 
-        -- ปิด FFlag
+        
         setfflag("NextGenReplicatorEnabledWrite4", "false")
         print("NextGenReplicatorEnabledWrite4 false")
 
         task.wait(2)
 
-        -- เปิด FFlag กลับ
+        
         setfflag("NextGenReplicatorEnabledWrite4", "true")
         print("NextGenReplicatorEnabledWrite4 true")
 
         task.wait(0.2)
 
-        -- วาปกลับตำแหน่งเดิม
+        
         hrp.CFrame = oldCFrame
         task.wait(0.1)
 
-        -- รีเซ็ตตัวละคร
+        
         hum.Health = 0
 
         InvisibleRunning = false
     end
 })
 
-local Tab = Window:Tab({Title = "Auto up Stats", Icon = "key"})
+local SettingTab = Window:Tab({
+    Title = "FarmSetting",
+    Icon = "eye"
+})
 
--- =========================
--- AUTO STATS CONFIG
--- =========================
+
 local statsToAdd = {
     "Melee",
     "Defense",
@@ -562,12 +499,8 @@ local statsToAdd = {
 
 local auto_stats = false
 
--- =========================
--- AUTO STATS TOGGLE
--- =========================
-Tab:Toggle({
+TabSetting:Toggle({
     Title = "Auto Stats",
-    Desc = "",
     Value = false,
     Callback = function(Value)
         auto_stats = Value
@@ -590,12 +523,9 @@ Tab:Toggle({
     end
 })
 
--- =========================
--- STAT SELECTION DROPDOWN
--- =========================
-Tab:Dropdown({
+
+TabSetting:Dropdown({
     Title = "Select Stat",
-    Desc = "",
     Values = {
         "Melee",
         "Defense",
@@ -603,7 +533,7 @@ Tab:Dropdown({
         "Gun",
         "Demon Fruit"
     },
-    Multi = true, -- เลือกได้หลายค่า
+    Multi = true, 
     Default = {"Melee"},
     Callback = function(Value)
         statsToAdd = Value
