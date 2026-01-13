@@ -15,7 +15,76 @@ local Window = WindUI:CreateWindow({
     Resizable = true,
 })
 
+Window:EditOpenButton({
+    Enabled = false
+})
+
+--===============================
+-- Services
+--===============================
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+
+--===============================
+-- Custom Toggle Button
+--===============================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "WindUI_Toggle"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+local ToggleBtn = Instance.new("ImageButton")
+ToggleBtn.Parent = ScreenGui
+ToggleBtn.Size = UDim2.fromOffset(50, 50)
+ToggleBtn.Position = UDim2.new(0, 20, 0.5, -25)
+ToggleBtn.BackgroundTransparency = 1
+ToggleBtn.Image = "rbxassetid://126601065035910"
+ToggleBtn.Active = true
+ToggleBtn.Draggable = true
+ToggleBtn.AutoButtonColor = false
+
+--===============================
+-- Toggle Logic (FIXED)
+--===============================
+ToggleBtn.MouseButton1Click:Connect(function()
+    ToggleBtn:TweenSize(
+        UDim2.fromOffset(56, 56),
+        Enum.EasingDirection.Out,
+        Enum.EasingStyle.Quad,
+        0.12,
+        true,
+        function()
+            ToggleBtn:TweenSize(
+                UDim2.fromOffset(50, 50),
+                Enum.EasingDirection.Out,
+                Enum.EasingStyle.Quad,
+                0.12,
+                true
+            )
+        end
+    )
+
+    -- ✅ ตัวนี้แหละที่ถูก
+    Window:Toggle()
+end)
+
+-- Keyboard toggle
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.T then
+        Window:Toggle()
+    end
+end)
+
+
 local Tab = Window:Tab({Title = "Auto Farm", Icon = "house"})
+
+WindUI:Notify({
+    Title = "Senixa Hub 👨‍💻",
+    Content = "By boss",
+    Duration = 3, -- 3 seconds
+    Icon = "rbxassetid://126601065035910",
+})
 
 --// GLOBAL
 getgenv().Auto_Farm = false
@@ -278,27 +347,16 @@ Tab:Toggle({
 
 
 local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 local Flying = false
 
--- บินไปตำแหน่ง
+-- วาปไปตำแหน่ง
 local function flyTo(cf)
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp = char:WaitForChild("HumanoidRootPart")
 
-    local distance = (hrp.Position - cf.Position).Magnitude
-    local speed = 350
-    local time = distance / speed
-
-    local tween = TweenService:Create(
-        hrp,
-        TweenInfo.new(time, Enum.EasingStyle.Linear),
-        {CFrame = cf + Vector3.new(0, 5, 0)}
-    )
-    tween:Play()
-    tween.Completed:Wait()
+    hrp.CFrame = cf + Vector3.new(0, 5, 0)
 end
 
 -- หา Chest แล้วเรียงจากใกล้ไปไกล (Chest1, Chest2, Chest3)
@@ -331,7 +389,7 @@ end
 
 -- Toggle
 Tab:Toggle({
-    Title = "Auto Farm Box",
+    Title = "treasure box",
     Desc = "",
     Value = false,
     Callback = function(v)
@@ -346,15 +404,335 @@ Tab:Toggle({
                         if not Flying then break end
                         if data.part and data.part.Parent then
                             flyTo(data.part.CFrame)
-                            task.wait(0.2)
+                            task.wait(0.15) -- ปรับความเร็ววาปได้
                         end
                     end
-                    task.wait(1)
+                    task.wait(0.5)
                 end
             end)
         end
     end
 })
+
+getgenv().AutoFarm = false
+
+Tab:Toggle({
+    Title = "Auto Farm Bone",
+    Desc = "",
+    Value = false,
+    Callback = function(v)
+        getgenv().AutoFarm = v
+        print("AutoFarm:", v)
+    end
+})
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Player = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local HRP = Character:WaitForChild("HumanoidRootPart")
+
+local HOVER_HEIGHT = 40
+local FLY_SPEED = 300
+
+local TARGET_MOBS = {
+    ["Reborn Skeleton"] = true,
+    ["Posessed Mummy"] = true,
+    ["Living Zombie"] = true
+}
+
+--==================================================
+-- UPDATE CHARACTER (กันตาย)
+--==================================================
+local function UpdateCharacter()
+    Character = Player.Character or Player.CharacterAdded:Wait()
+    HRP = Character:WaitForChild("HumanoidRootPart")
+end
+
+Player.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    UpdateCharacter()
+end)
+
+--==================================================
+-- FLY
+--==================================================
+local function flyTo(cf)
+    local dist = (HRP.Position - cf.Position).Magnitude
+    local time = dist / FLY_SPEED
+
+    local tween = TweenService:Create(
+        HRP,
+        TweenInfo.new(time, Enum.EasingStyle.Linear),
+        {CFrame = cf}
+    )
+    tween:Play()
+    tween.Completed:Wait()
+end
+
+--==================================================
+-- FIND TARGET MOBS
+--==================================================
+local function getAllTargets()
+    local list = {}
+
+    for _, v in ipairs(Workspace:GetDescendants()) do
+        if v:IsA("Model") and TARGET_MOBS[v.Name] then
+            local hum = v:FindFirstChildOfClass("Humanoid")
+            local root = v:FindFirstChild("HumanoidRootPart")
+            if hum and root and hum.Health > 0 then
+                table.insert(list, v)
+            end
+        end
+    end
+
+    return list
+end
+
+local function getNearestTarget()
+    local nearest, shortest = nil, math.huge
+
+    for _, mob in ipairs(getAllTargets()) do
+        local dist = (HRP.Position - mob.HumanoidRootPart.Position).Magnitude
+        if dist < shortest then
+            shortest = dist
+            nearest = mob
+        end
+    end
+
+    return nearest
+end
+
+--==================================================
+-- FAST ATTACK
+--==================================================
+assert(getrenv, "Exploit not supported")
+
+local registerHit = debug.getupvalue(getrenv()._G.SendHitsToServer, 1)
+local registerAttack = ReplicatedStorage.Modules.Net["RE/RegisterAttack"]
+
+local function GetClosestEnemies()
+    local enemies = CollectionService:GetTagged("BasicMob")
+    local playerPos = HRP.Position
+    local valid = {}
+
+    for _, mob in pairs(enemies) do
+        if TARGET_MOBS[mob.Name] then
+            local hum = mob:FindFirstChildOfClass("Humanoid")
+            local root = mob:FindFirstChild("HumanoidRootPart")
+            if hum and root and hum.Health > 0 then
+                local dist = (root.Position - playerPos).Magnitude
+                if dist <= 120 then
+                    table.insert(valid, {mob = mob, distance = dist})
+                end
+            end
+        end
+    end
+
+    table.sort(valid, function(a,b)
+        return a.distance < b.distance
+    end)
+
+    return #valid > 2 and {valid[1], valid[2]} or valid
+end
+
+local function Attack()
+    if not getgenv().AutoFarm then return end
+
+    local enemies = GetClosestEnemies()
+    if not enemies or #enemies == 0 then return end
+
+    local hitData = {}
+    for _, enemy in pairs(enemies) do
+        table.insert(hitData, {enemy.mob, enemy.mob.HumanoidRootPart})
+    end
+
+    registerAttack:FireServer(0/0)
+    coroutine.resume(registerHit, hitData[1][2], {table.unpack(hitData, 2)})
+end
+
+--==================================================
+-- ATTACK LOOP
+--==================================================
+task.spawn(function()
+    while true do
+        task.wait()
+        if getgenv().AutoFarm then
+            pcall(Attack)
+        else
+            task.wait(0.3)
+        end
+    end
+end)
+
+--==================================================
+-- MAIN FARM LOOP
+--==================================================
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+
+        if not getgenv().AutoFarm then
+            task.wait(0.5)
+            continue
+        end
+
+        local target = getNearestTarget()
+        if not target then
+            task.wait(1)
+            continue
+        end
+
+        local hum = target:FindFirstChildOfClass("Humanoid")
+        local root = target:FindFirstChild("HumanoidRootPart")
+        if not hum or not root then continue end
+
+        flyTo(root.CFrame * CFrame.new(0, HOVER_HEIGHT, 0))
+
+        while hum.Health > 0
+        and HRP.Parent
+        and getgenv().AutoFarm do
+            HRP.CFrame = root.CFrame * CFrame.new(0, HOVER_HEIGHT, 0)
+            task.wait(0.05)
+        end
+    end
+end)
+
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+
+local Character = Player.Character or Player.CharacterAdded:Wait()
+
+Player.CharacterAdded:Connect(function(char)
+    Character = char
+    task.wait(0.3)
+    EquipWeapon(getgenv().SelectWeapon)
+end)
+
+-- ===============================
+-- SERVICES
+-- ===============================
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+
+-- ===============================
+-- CHARACTER (กันตาย/เกิดใหม่)
+-- ===============================
+local Character = Player.Character or Player.CharacterAdded:Wait()
+
+Player.CharacterAdded:Connect(function(char)
+    Character = char
+    task.wait(0.3)
+    EquipWeapon(getgenv().SelectWeapon)
+end)
+
+-- ===============================
+-- GLOBAL
+-- ===============================
+getgenv().AutoHoldWeapon = false
+getgenv().SelectWeapon = "Melee"
+
+-- ===============================
+-- SERVICES
+-- ===============================
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+
+-- ===============================
+-- CHARACTER (กันตาย/เกิดใหม่)
+-- ===============================
+Player.CharacterAdded:Connect(function(char)
+    Character = char
+    task.wait(0.3)
+
+    if getgenv().AutoHoldWeapon then
+        EquipWeapon(getgenv().SelectWeapon)
+    end
+end)
+
+-- ===============================
+-- FUNCTION : ถือ Tool จริง
+-- ===============================
+function EquipWeapon(weaponType)
+    if not weaponType or not Character then return end
+
+    local Backpack = Player:WaitForChild("Backpack")
+
+    -- ถอด Tool เดิม
+    for _,v in pairs(Character:GetChildren()) do
+        if v:IsA("Tool") then
+            v.Parent = Backpack
+        end
+    end
+
+    -- หา Tool ตาม ToolTip
+    for _,tool in pairs(Backpack:GetChildren()) do
+        if tool:IsA("Tool") and tool.ToolTip == weaponType then
+            tool.Parent = Character
+            return
+        end
+    end
+end
+
+-- ===============================
+-- CHECK HOLD WEAPON
+-- ===============================
+local function IsHoldingWeapon(weaponType)
+    if not Character then return false end
+    for _,v in pairs(Character:GetChildren()) do
+        if v:IsA("Tool") and v.ToolTip == weaponType then
+            return true
+        end
+    end
+    return false
+end
+
+Tab:Toggle({
+    Title = "Auto Hold Weapon",
+    Desc = "",
+    Value = false,
+    Callback = function(v)
+        getgenv().AutoHoldWeapon = v
+
+        if v then
+            EquipWeapon(getgenv().SelectWeapon)
+        end
+    end
+})
+
+Tab:Dropdown({
+    Title = "Select Weapon",
+    Desc = "",
+    Values = { "Melee", "Sword", "Blox Fruit" },
+    Value = "Melee",
+    Multi = false,
+    AllowNone = false,
+    Callback = function(option)
+        getgenv().SelectWeapon = option
+
+        -- ถ้าเปิด Auto Hold อยู่ → เปลี่ยนแล้วถือค้างทันที
+        if getgenv().AutoHoldWeapon then
+            EquipWeapon(option)
+        end
+    end
+})
+
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+
+        if getgenv().AutoHoldWeapon then
+            if not IsHoldingWeapon(getgenv().SelectWeapon) then
+                EquipWeapon(getgenv().SelectWeapon)
+            end
+        end
+    end
+end)
 
 
 local Tab = Window:Tab({Title = "Combat", Icon = "crosshair"})
@@ -531,20 +909,39 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Character = nil
 
--- อัปเดตตัวละครเสมอ (ตอนตาย / เกิดใหม่)
+local DashLengthValue = 16
+
+local WalkspeedEnabled = false
+local WalkspeedValue = 1
+
+local WaterWalkingEnabled = false
+
+local function ApplyAttributes()
+    if not Character then return end
+
+    Character:SetAttribute("DashLength", DashLengthValue)
+
+    if WalkspeedEnabled then
+        Character:SetAttribute("SpeedMultiplier", WalkspeedValue)
+    else
+        Character:SetAttribute("SpeedMultiplier", 1)
+    end
+
+    Character:SetAttribute("WaterWalking", WaterWalkingEnabled)
+end
+
 local function UpdateCharacter()
     Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    task.wait(0.1)
+    ApplyAttributes()
 end
+
 UpdateCharacter()
 
 LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.2)
     UpdateCharacter()
 end)
 
--- =====================
--- Dash Length (ใช้ได้ตลอด)
--- =====================
 Tab:Slider({
     Title = "Dash Length",
     Desc = "",
@@ -555,27 +952,58 @@ Tab:Slider({
         Default = 16
     },
     Callback = function(value)
+        DashLengthValue = value
         if Character then
             Character:SetAttribute("DashLength", value)
         end
     end
 })
 
--- =====================
--- Walking On Water (Toggle)
--- =====================
+Tab:Slider({
+    Title = "Walkspeed",
+    Desc = "",
+    Step = 5,
+    Value = {
+        Min = 1,
+        Max = 10,
+        Default = 1
+    },
+    Callback = function(value)
+        WalkspeedValue = value
+        if WalkspeedEnabled and Character then
+            Character:SetAttribute("SpeedMultiplier", WalkspeedValue)
+        end
+    end
+})
+
+Tab:Toggle({
+    Title = "Walkspeed",
+    Desc = "",
+    Value = false,
+    Callback = function(v)
+        WalkspeedEnabled = v
+        if Character then
+            if WalkspeedEnabled then
+                Character:SetAttribute("SpeedMultiplier", WalkspeedValue)
+            else
+                Character:SetAttribute("SpeedMultiplier", 1)
+            end
+        end
+    end
+})
+
 Tab:Toggle({
     Title = "Walking On Water",
     Desc = "",
     Value = false,
     Callback = function(v)
+        WaterWalkingEnabled = v
         if Character then
             Character:SetAttribute("WaterWalking", v)
         end
     end
 })
 
--- ⚡ Toggle: Jump Boost + Infinite Jump
 Tab:Toggle({
     Title = "Jump Boost",
     Desc = "",
@@ -741,6 +1169,26 @@ Tab:Dropdown({
     Default = {"Melee"},
     Callback = function(Value)
         statsToAdd = Value
+    end
+})
+
+local Tab = Window:Tab({Title = "Server", Icon = "settings"})
+
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
+
+local LP = Players.LocalPlayer
+local PlaceId = game.PlaceId
+
+local function ServerHop()
+    TeleportService:Teleport(PlaceId, LP)
+end
+
+Tab:Button({
+    Title = "Rejoin Server",
+    Desc = "",
+    Callback = function()
+        TeleportService:Teleport(PlaceId)
     end
 })
 
